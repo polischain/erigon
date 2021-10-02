@@ -1,0 +1,24 @@
+{
+  "stepDuration": 5,
+  "blockReward": "0x0",
+  "maximumUncleCountTransition": 0,
+  "maximumUncleCount": 0,
+  "validators": {
+    "multi": {
+      "0": {
+        "list": [
+          "0x20dfc79f4d4b3fc2d26778f5f507235bfb6954c1"
+        ]
+      },
+      "200": {
+        "safeContract": "0x6F97c21E40b1EC5F96F034f146E94bDC8c1178D1"
+      }
+    }
+  },
+  "blockRewardContractAddress": "0x4c40CE3fb33A6781c903Bc830804DE4195Cc966f",
+  "blockRewardContractTransition": 200,
+  "randomnessContractAddress": {
+    "200": "0x80A1edDCc5D928D10DDe4E82F1AF4099754A7334"
+  },
+  "posdaoTransition": 200
+}

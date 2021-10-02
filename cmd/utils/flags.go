@@ -608,6 +608,10 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 			urls = params.KovanBootnodes
 		case params.FermionChainName:
 			urls = params.FermionBootnodes
+		case params.SpartaChainName:
+			urls = params.SpartaBootnodes
+		case params.OlympusChainName:
+			urls = params.OlympusBootnodes
 		default:
 			if cfg.BootstrapNodes != nil {
 				return // already set, don't apply defaults.
@@ -652,6 +656,10 @@ func setBootstrapNodesV5(ctx *cli.Context, cfg *p2p.Config) {
 			urls = params.KovanBootnodes
 		case params.FermionChainName:
 			urls = params.FermionBootnodes
+		case params.SpartaChainName:
+			urls = params.SpartaBootnodes
+		case params.OlympusChainName:
+			urls = params.OlympusBootnodes
 		default:
 			if cfg.BootstrapNodesV5 != nil {
 				return // already set, don't apply defaults.
@@ -886,6 +894,10 @@ func DataDirForNetwork(datadir string, network string) string {
 		return filepath.Join(datadir, "kovan")
 	case params.FermionChainName:
 		return filepath.Join(datadir, "fermion")
+	case params.SpartaChainName:
+		return filepath.Join(datadir, "sparta")
+	case params.OlympusChainName:
+		return filepath.Join(datadir, "olympus")
 	default:
 		return datadir
 	}
@@ -1272,6 +1284,16 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *node.Config, cfg *ethconfig.Conf
 			cfg.NetworkID = 102
 		}
 		cfg.Genesis = core.DefaultFermionGenesisBlock()
+	case params.SpartaChainName:
+		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
+			cfg.NetworkID = 333888
+		}
+		cfg.Genesis = core.DefaultSpartaGenesisBlock()
+	case params.OlympusChainName:
+		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
+			cfg.NetworkID = 333999
+		}
+		cfg.Genesis = core.DefaultOlympusGenesisBlock()
 	case params.DevChainName:
 		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
 			cfg.NetworkID = 1337

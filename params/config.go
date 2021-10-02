@@ -35,6 +35,8 @@ const (
 	SokolChainName   = "sokol"
 	KovanChainName   = "kovan"
 	FermionChainName = "fermion"
+	SpartaChainName  = "sparta"
+	OlympusChainName = "olympus"
 )
 
 // Genesis hashes to enforce below configs on.
@@ -47,6 +49,8 @@ var (
 	SokolGenesisHash   = common.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
 	KovanGenesisHash   = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
 	FermionGenesisHash = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
+	SpartaGenesisHash = common.HexToHash("0x02887a972bd3628a02e91f937d6ce0d76145df45269b6cc23b2a3df8c8464740")
+	OlympusGenesisHash = common.HexToHash("0x80adfab7a7a5c7adfa4bf23ece842b42e91685f3c729fa651be57dc0f02233c9")
 )
 
 var (
@@ -269,6 +273,44 @@ var (
 		LondonBlock:         big.NewInt(26741100),
 		CatalystBlock:       nil,
 		Aura:                &AuRaConfig{},
+	}
+
+	SpartaChainConfig = &ChainConfig{
+		ChainName:      SpartaChainName,
+		ChainID:        big.NewInt(333888),
+		HomesteadBlock: big.NewInt(0),
+		DAOForkBlock:   nil,
+		DAOForkSupport: false,
+		EIP150Block:    big.NewInt(0),
+		EIP155Block:    big.NewInt(0),
+		EIP158Block:    big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    nil,
+		BerlinBlock:         big.NewInt(0),
+		CatalystBlock: nil,
+		Aura:          &AuRaConfig{},
+	}
+
+	OlympusChainConfig = &ChainConfig{
+		ChainName:      OlympusChainName,
+		ChainID:        big.NewInt(333999),
+		HomesteadBlock: big.NewInt(0),
+		DAOForkBlock:   nil,
+		DAOForkSupport: false,
+		EIP150Block:    big.NewInt(0),
+		EIP155Block:    big.NewInt(0),
+		EIP158Block:    big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    nil,
+		BerlinBlock:         big.NewInt(0),
+		CatalystBlock: nil,
+		Aura:          &AuRaConfig{},
 	}
 
 	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced

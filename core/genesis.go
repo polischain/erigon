@@ -311,6 +311,10 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.KovanChainConfig
 	case ghash == params.FermionGenesisHash:
 		return params.FermionChainConfig
+	case ghash == params.SpartaGenesisHash:
+		return params.SpartaChainConfig
+	case ghash == params.OlympusGenesisHash:
+		return params.OlympusChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}
@@ -638,6 +642,42 @@ func DefaultFermionGenesisBlock() *Genesis {
 		GasLimit:   0x5B8D80,
 		Difficulty: big.NewInt(0x20000),
 		Alloc:      readPrealloc("allocs/fermion.json"),
+	}
+}
+
+func DefaultSpartaGenesisBlock() *Genesis {
+	sealRlp, err := rlp.EncodeToBytes([][]byte{
+		common.FromHex(""),
+		common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return &Genesis{
+		Config:     params.SpartaChainConfig,
+		Timestamp:  0x0,
+		SealRlp:    sealRlp,
+		GasLimit:   0x5F5E100,
+		Difficulty: big.NewInt(0x20000),
+		Alloc:      readPrealloc("allocs/sparta.json"),
+	}
+}
+
+func DefaultOlympusGenesisBlock() *Genesis {
+	sealRlp, err := rlp.EncodeToBytes([][]byte{
+		common.FromHex(""),
+		common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return &Genesis{
+		Config:     params.OlympusChainConfig,
+		Timestamp:  0x0,
+		SealRlp:    sealRlp,
+		GasLimit:   0x1312D00,
+		Difficulty: big.NewInt(0x20000),
+		Alloc:      readPrealloc("allocs/olympus.json"),
 	}
 }
 
