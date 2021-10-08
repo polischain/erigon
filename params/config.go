@@ -48,7 +48,7 @@ var (
 	ErigonGenesisHash  = common.HexToHash("0xfecd5c85712e36f30f09ba3a42386b42c46b5ba5395a4246b952e655f9aa0f58")
 	SokolGenesisHash   = common.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
 	KovanGenesisHash   = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
-	FermionGenesisHash = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
+	FermionGenesisHash = common.HexToHash("0xcb6399165d4b9460d2462a71f4574984df2a92fe513b1ab64d69573426ecc75f")
 	SpartaGenesisHash = common.HexToHash("0x02887a972bd3628a02e91f937d6ce0d76145df45269b6cc23b2a3df8c8464740")
 	OlympusGenesisHash = common.HexToHash("0x80adfab7a7a5c7adfa4bf23ece842b42e91685f3c729fa651be57dc0f02233c9")
 )
@@ -60,7 +60,7 @@ var (
 var (
 	SokolGenesisStateRoot   = common.HexToHash("0xfad4af258fd11939fae0c6c6eec9d340b1caac0b0196fd9a1bc3f489c5bf00b3")
 	KovanGenesisStateRoot   = common.HexToHash("0x2480155b48a1cea17d67dbfdfaafe821c1d19cdd478c5358e8ec56dec24502b2")
-	FermionGenesisStateRoot = common.HexToHash("0x2480155b48a1cea17d67dbfdfaafe821c1d19cdd478c5358e8ec56dec24502b2")
+	FermionGenesisStateRoot = common.HexToHash("0x08982dc16236c51b6d9aff8b76cd0faa7067eb55eba62395d5a82649d8fb73c4")
 )
 
 var (
