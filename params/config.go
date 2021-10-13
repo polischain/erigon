@@ -293,6 +293,7 @@ var (
 	SpartaChainConfig = &ChainConfig{
 		ChainName:      SpartaChainName,
 		ChainID:        big.NewInt(333888),
+		Consensus:      AuRaConsensus,
 		HomesteadBlock: big.NewInt(0),
 		DAOForkBlock:   nil,
 		DAOForkSupport: false,
@@ -312,6 +313,7 @@ var (
 	OlympusChainConfig = &ChainConfig{
 		ChainName:      OlympusChainName,
 		ChainID:        big.NewInt(333999),
+		Consensus:      AuRaConsensus,
 		HomesteadBlock: big.NewInt(0),
 		DAOForkBlock:   nil,
 		DAOForkSupport: false,
