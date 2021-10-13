@@ -11,9 +11,6 @@ var Sokol []byte
 //go:embed kovan.json
 var Kovan []byte
 
-//go:embed fermion.json
-var Fermion []byte
-
 //go:embed sparta.json
 var Sparta []byte
 
@@ -26,8 +23,6 @@ func GetConfigByChain(chainName string) []byte {
 		return Sokol
 	case params.KovanChainName:
 		return Kovan
-	case params.FermionChainName:
-		return Fermion
 	case params.SpartaChainName:
 		return Sparta
 	case params.OlympusChainName:

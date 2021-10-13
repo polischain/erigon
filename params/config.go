@@ -56,7 +56,7 @@ var (
 	ErigonGenesisHash  = common.HexToHash("0xfecd5c85712e36f30f09ba3a42386b42c46b5ba5395a4246b952e655f9aa0f58")
 	SokolGenesisHash   = common.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
 	KovanGenesisHash   = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
-	FermionGenesisHash = common.HexToHash("0x2a4f2488bd9b62b128b39382c079e11d938f0ebbef6490042b5c6b86b17ea505")
+	FermionGenesisHash = common.HexToHash("0x45b0d99ebd35baf0af742ef543bb6b74f8c46f41d79b1b84c7718a882a779582")
 	SpartaGenesisHash = common.HexToHash("0x02887a972bd3628a02e91f937d6ce0d76145df45269b6cc23b2a3df8c8464740")
 	OlympusGenesisHash = common.HexToHash("0x80adfab7a7a5c7adfa4bf23ece842b42e91685f3c729fa651be57dc0f02233c9")
 )
@@ -273,9 +273,10 @@ var (
 	FermionChainConfig = &ChainConfig{
 		ChainName:           FermionChainName,
 		ChainID:             big.NewInt(1212120),
+		Consensus:           CliqueConsensus,
 		HomesteadBlock:      big.NewInt(0),
-		DAOForkBlock:        big.NewInt(0),
-		DAOForkSupport:      true,
+		DAOForkBlock:        nil,
+		DAOForkSupport:      false,
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),
 		EIP158Block:         big.NewInt(0),
@@ -287,7 +288,10 @@ var (
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
 		CatalystBlock:       nil,
-		Aura:                &AuRaConfig{},
+		Clique: &CliqueConfig{
+			Period: 15,
+			Epoch:  30000,
+		},
 	}
 
 	SpartaChainConfig = &ChainConfig{
