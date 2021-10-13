@@ -39,6 +39,14 @@ const (
 	OlympusChainName = "olympus"
 )
 
+type ConsensusType string
+
+const (
+	AuRaConsensus   ConsensusType = "aura"
+	EtHashConsensus ConsensusType = "ethash"
+	CliqueConsensus ConsensusType = "clique"
+)
+
 // Genesis hashes to enforce below configs on.
 var (
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -48,7 +56,7 @@ var (
 	ErigonGenesisHash  = common.HexToHash("0xfecd5c85712e36f30f09ba3a42386b42c46b5ba5395a4246b952e655f9aa0f58")
 	SokolGenesisHash   = common.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
 	KovanGenesisHash   = common.HexToHash("0xa3c565fc15c7478862d50ccd6561e3c06b24cc509bf388941c25ea985ce32cb9")
-	FermionGenesisHash = common.HexToHash("0xcb6399165d4b9460d2462a71f4574984df2a92fe513b1ab64d69573426ecc75f")
+	FermionGenesisHash = common.HexToHash("0x2a4f2488bd9b62b128b39382c079e11d938f0ebbef6490042b5c6b86b17ea505")
 	SpartaGenesisHash = common.HexToHash("0x02887a972bd3628a02e91f937d6ce0d76145df45269b6cc23b2a3df8c8464740")
 	OlympusGenesisHash = common.HexToHash("0x80adfab7a7a5c7adfa4bf23ece842b42e91685f3c729fa651be57dc0f02233c9")
 )
@@ -68,6 +76,7 @@ var (
 	MainnetChainConfig = &ChainConfig{
 		ChainName:           MainnetChainName,
 		ChainID:             big.NewInt(1),
+		Consensus:           EtHashConsensus,
 		HomesteadBlock:      big.NewInt(1_150_000),
 		DAOForkBlock:        big.NewInt(1_920_000),
 		DAOForkSupport:      true,
@@ -89,6 +98,7 @@ var (
 	RopstenChainConfig = &ChainConfig{
 		ChainName:           RopstenChainName,
 		ChainID:             big.NewInt(3),
+		Consensus:           EtHashConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      true,
@@ -110,6 +120,7 @@ var (
 	RinkebyChainConfig = &ChainConfig{
 		ChainName:           RinkebyChainName,
 		ChainID:             big.NewInt(4),
+		Consensus:           CliqueConsensus,
 		HomesteadBlock:      big.NewInt(1),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      true,
@@ -134,6 +145,7 @@ var (
 	GoerliChainConfig = &ChainConfig{
 		ChainName:           GoerliChainName,
 		ChainID:             big.NewInt(5),
+		Consensus:           CliqueConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      true,
@@ -157,6 +169,7 @@ var (
 	ErigonChainConfig = &ChainConfig{
 		ChainName:           ErigonMineName,
 		ChainID:             new(big.Int).SetBytes([]byte("erigon-mine")),
+		Consensus:           EtHashConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      true,
@@ -175,6 +188,7 @@ var (
 	SokolChainConfig = &ChainConfig{
 		ChainName:      SokolChainName,
 		ChainID:        big.NewInt(77),
+		Consensus:      AuRaConsensus,
 		HomesteadBlock: big.NewInt(0),
 		DAOForkBlock:   nil,
 		DAOForkSupport: false,
@@ -238,6 +252,7 @@ var (
 	KovanChainConfig = &ChainConfig{
 		ChainName:           KovanChainName,
 		ChainID:             big.NewInt(42),
+		Consensus:           AuRaConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      false,
@@ -257,20 +272,20 @@ var (
 
 	FermionChainConfig = &ChainConfig{
 		ChainName:           FermionChainName,
-		ChainID:             big.NewInt(102),
+		ChainID:             big.NewInt(1212120),
 		HomesteadBlock:      big.NewInt(0),
-		DAOForkBlock:        nil,
-		DAOForkSupport:      false,
+		DAOForkBlock:        big.NewInt(0),
+		DAOForkSupport:      true,
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),
 		EIP158Block:         big.NewInt(0),
-		ByzantiumBlock:      big.NewInt(5067000),
-		ConstantinopleBlock: big.NewInt(9200000),
-		PetersburgBlock:     big.NewInt(10255201),
-		IstanbulBlock:       big.NewInt(14111141),
-		MuirGlacierBlock:    nil,
-		BerlinBlock:         big.NewInt(24770900),
-		LondonBlock:         big.NewInt(26741100),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
 		CatalystBlock:       nil,
 		Aura:                &AuRaConfig{},
 	}
@@ -320,6 +335,7 @@ var (
 	// adding flags to the config to also have to set these fields.
 	AllEthashProtocolChanges = &ChainConfig{
 		ChainID:             big.NewInt(1337),
+		Consensus:           EtHashConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      false,
@@ -346,6 +362,7 @@ var (
 	// adding flags to the config to also have to set these fields.
 	AllCliqueProtocolChanges = &ChainConfig{
 		ChainID:             big.NewInt(1337),
+		Consensus:           CliqueConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      false,
@@ -359,7 +376,7 @@ var (
 		IstanbulBlock:       big.NewInt(0),
 		MuirGlacierBlock:    big.NewInt(0),
 		BerlinBlock:         big.NewInt(0),
-		LondonBlock:         nil,
+		LondonBlock:         big.NewInt(0),
 		CatalystBlock:       nil,
 		Ethash:              nil,
 		Clique:              &CliqueConfig{Period: 0, Epoch: 30000},
@@ -369,6 +386,7 @@ var (
 
 	TestChainConfig = &ChainConfig{
 		ChainID:             big.NewInt(1),
+		Consensus:           EtHashConsensus,
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        nil,
 		DAOForkSupport:      false,
@@ -388,6 +406,27 @@ var (
 		Clique:              nil,
 	}
 
+	TestChainAuraConfig = &ChainConfig{
+		ChainID:             big.NewInt(1),
+		Consensus:           AuRaConsensus,
+		HomesteadBlock:      big.NewInt(0),
+		DAOForkBlock:        nil,
+		DAOForkSupport:      false,
+		EIP150Block:         big.NewInt(0),
+		EIP150Hash:          common.Hash{},
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         nil,
+		CatalystBlock:       nil,
+		Aura:                &AuRaConfig{},
+	}
+
 	TestRules = TestChainConfig.Rules(0)
 )
 
@@ -399,6 +438,8 @@ var (
 type ChainConfig struct {
 	ChainName string
 	ChainID   *big.Int `json:"chainId"` // chainId identifies the current chain and is used for replay protection
+
+	Consensus ConsensusType `json:"consensus,omitempty"` // aura, ethash or clique
 
 	HomesteadBlock *big.Int `json:"homesteadBlock,omitempty"` // Homestead switch block (nil = no fork, 0 = already homestead)
 
@@ -481,6 +522,10 @@ func (c *ChainConfig) String() string {
 		c.LondonBlock,
 		engine,
 	)
+}
+
+func (c *ChainConfig) IsHeaderWithSeal() bool {
+	return c.Consensus == AuRaConsensus
 }
 
 type SnapshotConfig struct {
