@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	_ "net/http/pprof" //nolint:gosec
 	"os"
 	"os/signal"
 	"runtime"
@@ -55,6 +56,7 @@ import (
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/ethdb"
 	"github.com/ledgerwatch/erigon/ethdb/cbor"
+	"github.com/ledgerwatch/erigon/internal/debug"
 	"github.com/ledgerwatch/erigon/migrations"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
@@ -63,7 +65,7 @@ import (
 	"github.com/wcharczuk/go-chart/v2"
 )
 
-const ASSERT = true
+const ASSERT = false
 
 var (
 	verbosity  = flag.Uint("verbosity", 3, "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail (default 3)")
@@ -1310,7 +1312,7 @@ func mphf(chaindata string, block int) error {
 	if rs, err = recsplit.NewRecSplit(recsplit.RecSplitArgs{
 		KeyCount:   int(count),
 		BucketSize: 2000,
-		Salt:       0,
+		Salt:       1,
 		LeafSize:   8,
 		TmpDir:     "",
 		StartSeed: []uint64{0x106393c187cae21a, 0x6453cec3f7376937, 0x643e521ddbd2be98, 0x3740c6412f6572cb, 0x717d47562f1ce470, 0x4cd6eb4c63befb7c, 0x9bfd8c5e18c8da73,
@@ -1458,7 +1460,7 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 			inv[filtered[i]] = i
 		}
 		//log.Info("Inverted array done")
-		lcp := make([]byte, n)
+		lcp := make([]int32, n)
 		var k int
 		// Process all suffixes one by one starting from
 		// first suffix in txt[]
@@ -1481,8 +1483,7 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 			for i+k < n && j+k < n && superstring[(i+k)*2] != 0 && superstring[(j+k)*2] != 0 && superstring[(i+k)*2+1] == superstring[(j+k)*2+1] {
 				k++
 			}
-
-			lcp[inv[i]] = byte(k) // lcp for the present suffix.
+			lcp[inv[i]] = int32(k) // lcp for the present suffix.
 
 			// Deleting the starting character from the string.
 			if k > 0 {
@@ -1491,16 +1492,22 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 		}
 		//log.Info("Kasai algorithm finished")
 		// Checking LCP array
-		/*
+
+		if ASSERT {
 			for i := 0; i < n-1; i++ {
 				var prefixLen int
 				p1 := int(filtered[i])
 				p2 := int(filtered[i+1])
-				for p1+prefixLen < n && p2+prefixLen < n && superstring[(p1+prefixLen)*2] != 0 && superstring[(p2+prefixLen)*2] != 0 && superstring[(p1+prefixLen)*2+1] == superstring[(p2+prefixLen)*2+1] {
+				for p1+prefixLen < n &&
+					p2+prefixLen < n &&
+					superstring[(p1+prefixLen)*2] != 0 &&
+					superstring[(p2+prefixLen)*2] != 0 &&
+					superstring[(p1+prefixLen)*2+1] == superstring[(p2+prefixLen)*2+1] {
 					prefixLen++
 				}
 				if prefixLen != int(lcp[i]) {
-					log.Error("Mismatch", "prefixLen", prefixLen, "lcp[i]", lcp[i])
+					log.Error("Mismatch", "prefixLen", prefixLen, "lcp[i]", lcp[i], "i", i)
+					break
 				}
 				l := int(lcp[i]) // Length of potential dictionary word
 				if l < 2 {
@@ -1510,9 +1517,9 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 				for s := 0; s < l; s++ {
 					dictKey[s] = superstring[(filtered[i]+s)*2+1]
 				}
-				fmt.Printf("%d %d %s\n", filtered[i], lcp[i], dictKey)
+				//fmt.Printf("%d %d %s\n", filtered[i], lcp[i], dictKey)
 			}
-		*/
+		}
 		//log.Info("LCP array checked")
 		// Walk over LCP array and compute the scores of the strings
 		b := inv
@@ -1524,7 +1531,7 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 				continue
 			}
 			for l := int(lcp[i]); l > int(lcp[i+1]); l-- {
-				if l < minPatternLen {
+				if l < minPatternLen || l > maxPatternLen {
 					continue
 				}
 				// Go back
@@ -1549,7 +1556,6 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 				}
 				score := uint64(repeats * int(l-4))
 				if score > minPatternScore {
-					// Dictionary key is the concatenation of the score and the dictionary word (to later aggregate the scores from multiple chunks)
 					dictKey := make([]byte, l)
 					for s := 0; s < l; s++ {
 						dictKey[s] = superstring[(filtered[i]+s)*2+1]
@@ -1566,108 +1572,6 @@ func processSuperstring(superstringCh chan []byte, dictCollector *etl.Collector,
 	completion.Done()
 }
 
-type DictionaryItem struct {
-	word  []byte
-	score uint64
-}
-
-type DictionaryBuilder struct {
-	limit         int
-	lastWord      []byte
-	lastWordScore uint64
-	items         []DictionaryItem
-}
-
-func (db DictionaryBuilder) Len() int {
-	return len(db.items)
-}
-
-func (db DictionaryBuilder) Less(i, j int) bool {
-	if db.items[i].score == db.items[j].score {
-		return bytes.Compare(db.items[i].word, db.items[j].word) < 0
-	}
-	return db.items[i].score < db.items[j].score
-}
-
-func (db *DictionaryBuilder) Swap(i, j int) {
-	db.items[i], db.items[j] = db.items[j], db.items[i]
-}
-
-func (db *DictionaryBuilder) Push(x interface{}) {
-	db.items = append(db.items, x.(DictionaryItem))
-}
-
-func (db *DictionaryBuilder) Pop() interface{} {
-	old := db.items
-	n := len(old)
-	x := old[n-1]
-	db.items = old[0 : n-1]
-	return x
-}
-
-func (db *DictionaryBuilder) processWord(word []byte, score uint64) {
-	heap.Push(db, DictionaryItem{word: word, score: score})
-	if db.Len() > db.limit {
-		// Remove the element with smallest score
-		heap.Pop(db)
-	}
-}
-
-func (db *DictionaryBuilder) compressLoadFunc(k, v []byte, table etl.CurrentTableReader, next etl.LoadNextFunc) error {
-	score := binary.BigEndian.Uint64(v)
-	if bytes.Equal(k, db.lastWord) {
-		db.lastWordScore += score
-	} else {
-		if db.lastWord != nil {
-			db.processWord(db.lastWord, db.lastWordScore)
-		}
-		db.lastWord = common.CopyBytes(k)
-		db.lastWordScore = score
-	}
-	return nil
-}
-
-func (db *DictionaryBuilder) finish() {
-	if db.lastWord != nil {
-		db.processWord(db.lastWord, db.lastWordScore)
-	}
-}
-
-type DictAggregator struct {
-	lastWord      []byte
-	lastWordScore uint64
-	collector     *etl.Collector
-}
-
-func (da *DictAggregator) processWord(word []byte, score uint64) error {
-	var scoreBuf [8]byte
-	binary.BigEndian.PutUint64(scoreBuf[:], score)
-	return da.collector.Collect(word, scoreBuf[:])
-}
-
-func (da *DictAggregator) aggLoadFunc(k, v []byte, table etl.CurrentTableReader, next etl.LoadNextFunc) error {
-	score := binary.BigEndian.Uint64(v)
-	if bytes.Equal(k, da.lastWord) {
-		da.lastWordScore += score
-	} else {
-		if da.lastWord != nil {
-			if err := da.processWord(da.lastWord, da.lastWordScore); err != nil {
-				return err
-			}
-		}
-		da.lastWord = common.CopyBytes(k)
-		da.lastWordScore = score
-	}
-	return nil
-}
-
-func (da *DictAggregator) finish() error {
-	if da.lastWord != nil {
-		return da.processWord(da.lastWord, da.lastWordScore)
-	}
-	return nil
-}
-
 const CompressLogPrefix = "compress"
 
 // superstringLimit limits how large can one "superstring" get before it is processed
@@ -1677,13 +1581,10 @@ const superstringLimit = 16 * 1024 * 1024
 
 // minPatternLen is minimum length of pattern we consider to be included into the dictionary
 const minPatternLen = 5
+const maxPatternLen = 64
 
 // minPatternScore is minimum score (per superstring) required to consider including pattern into the dictionary
 const minPatternScore = 1024
-
-// maxDictPatterns is the maximum number of patterns allowed in the initial (not reduced dictionary)
-// Large values increase memory consumption of dictionary reduction phase
-const maxDictPatterns = 1024 * 1024
 
 func compress1(chaindata string, name string) error {
 	database := mdbx.MustOpen(chaindata)
@@ -1726,6 +1627,8 @@ func compress1(chaindata string, name string) error {
 			ch <- superstring
 			superstring = nil
 		}
+		//fmt.Printf("\"%x\",\n", buf[:l])
+
 		for _, a := range buf[:l] {
 			superstring = append(superstring, 1, a)
 		}
@@ -1750,35 +1653,19 @@ func compress1(chaindata string, name string) error {
 	}
 	close(ch)
 	wg.Wait()
-	dictCollector := etl.NewCollector(CompressLogPrefix, tmpDir, etl.NewSortableBuffer(etl.BufferOptimalSize))
-	dictAggregator := &DictAggregator{collector: dictCollector}
-	for _, collector := range collectors {
-		if err = collector.Load(nil, "", dictAggregator.aggLoadFunc, etl.TransformArgs{}); err != nil {
-			return err
-		}
-		collector.Close()
-	}
-	if err = dictAggregator.finish(); err != nil {
+
+	db, err := compress.DictionaryBuilderFromCollectors(context.Background(), CompressLogPrefix, tmpDir, collectors)
+	if err != nil {
 		return err
 	}
-	db := &DictionaryBuilder{limit: maxDictPatterns} // Only collect 1m words with highest scores
-	if err = dictCollector.Load(nil, "", db.compressLoadFunc, etl.TransformArgs{}); err != nil {
-		return err
-	}
-	db.finish()
-	dictCollector.Close()
+
 	var df *os.File
 	df, err = os.Create(name + ".dictionary.txt")
 	if err != nil {
 		return err
 	}
 	w := bufio.NewWriterSize(df, etl.BufIOSize)
-	// Sort dictionary builder
-	sort.Sort(db)
-
-	for i := len(db.items); i > 0; i-- {
-		fmt.Fprintf(w, "%d %x\n", db.items[i-1].score, db.items[i-1].word)
-	}
+	db.ForEach(func(score uint64, word []byte) { fmt.Fprintf(w, "%d %x\n", score, word) })
 	if err = w.Flush(); err != nil {
 		return err
 	}
@@ -2717,14 +2604,44 @@ func reducedict(name string) error {
 	return nil
 }
 func recsplitWholeChain(chaindata string) error {
-	blocksPerFile := 500_000
-	blockTotal = &blocksPerFile
-	for i := 0; i < 13_500_000; i += *blockTotal {
+	blocksPerFile := uint64(500_000)
+	lastChunk := func(tx kv.Tx, blocksPerFile uint64) (uint64, error) {
+		c, err := tx.Cursor(kv.BlockBody)
+		if err != nil {
+			return 0, err
+		}
+		k, _, err := c.Last()
+		if err != nil {
+			return 0, err
+		}
+		last := binary.BigEndian.Uint64(k)
+		if last > params.FullImmutabilityThreshold {
+			last -= params.FullImmutabilityThreshold
+		} else {
+			last = 0
+		}
+		last = last - last%blocksPerFile
+		return last, nil
+	}
+
+	var last uint64
+
+	database := mdbx.MustOpen(chaindata)
+	defer database.Close()
+	if err := database.View(context.Background(), func(tx kv.Tx) (err error) {
+		last, err = lastChunk(tx, blocksPerFile)
+		return err
+	}); err != nil {
+		return err
+	}
+	database.Close()
+
+	log.Info("Last body number", "last", last)
+	for i := uint64(*block); i < last; i += blocksPerFile {
 		*name = fmt.Sprintf("bodies%d-%dm", i/1_000_000, i%1_000_000/100_000)
 		log.Info("Creating", "file", *name)
 
-		block = &i
-		if err := dumpTxs(chaindata, uint64(*block), *blockTotal, *name); err != nil {
+		if err := dumpTxs(chaindata, i, *blockTotal, *name); err != nil {
 			return err
 		}
 		if err := compress1(chaindata, *name); err != nil {
@@ -2889,14 +2806,14 @@ RETRY:
 	log.Info("Building recsplit...")
 
 	if err = rs.Build(); err != nil {
+		if errors.Is(err, recsplit.ErrCollision) {
+			log.Info("Building recsplit. Collision happened. It's ok. Restarting...", "err", err)
+			rs.ResetNextSalt()
+			goto RETRY
+		}
 		return err
 	}
 
-	if rs.Collision() {
-		log.Info("Building recsplit. Collision happened. It's ok. Restarting...")
-		rs.ResetNextSalt()
-		goto RETRY
-	}
 	return nil
 }
 func decompress(name string) error {
@@ -3641,6 +3558,7 @@ func dumpTxs(chaindata string, block uint64, blockTotal int, name string) error 
 	parseCtx := txpool.NewTxParseContext(*chainID)
 	parseCtx.WithSender(false)
 	slot := txpool.TxSlot{}
+	valueBuf := make([]byte, 16*4096)
 	k, v, e := bodies.Seek(blockEncoded)
 	for ; k != nil && e == nil; k, v, e = bodies.Next() {
 		bodyNum := binary.BigEndian.Uint64(k)
@@ -3662,13 +3580,14 @@ func dumpTxs(chaindata string, block uint64, blockTotal int, name string) error 
 				if _, err := parseCtx.ParseTransaction(tv, 0, &slot, nil); err != nil {
 					panic(err)
 				}
-				tv = append(append([]byte{}, slot.IdHash[:1]...), tv...)
-				n := binary.PutUvarint(numBuf, uint64(len(tv)))
+				valueBuf = valueBuf[:0]
+				valueBuf = append(append(valueBuf, slot.IdHash[:1]...), tv...)
+				n := binary.PutUvarint(numBuf, uint64(len(valueBuf)))
 				if _, e = w.Write(numBuf[:n]); e != nil {
 					return err
 				}
-				if len(tv) > 0 {
-					if _, e = w.Write(tv); e != nil {
+				if len(valueBuf) > 0 {
+					if _, e = w.Write(valueBuf); e != nil {
 						return e
 					}
 				}
@@ -4094,8 +4013,8 @@ func devTx(chaindata string) error {
 }
 
 func main() {
+	debug.RaiseFdLimit()
 	flag.Parse()
-
 	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(*verbosity), log.StderrHandler))
 
 	if *cpuprofile != "" {
