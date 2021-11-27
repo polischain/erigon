@@ -21,6 +21,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+	"github.com/ledgerwatch/erigon/p2p/enode"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
@@ -322,7 +323,7 @@ func (hd *HeaderDownload) removeAnchor(segment *ChainSegment, start int) error {
 }
 
 // if anchor will be abandoned - given peerID will get Penalty
-func (hd *HeaderDownload) newAnchor(segment *ChainSegment, start, end int, peerID string) (bool, error) {
+func (hd *HeaderDownload) newAnchor(segment *ChainSegment, start, end int, peerID enode.ID) (bool, error) {
 	anchorHeader := segment.Headers[end-1]
 
 	var anchor *Anchor
@@ -591,7 +592,7 @@ func (hd *HeaderDownload) RequestSkeleton() *HeaderRequest {
 
 // InsertHeaders attempts to insert headers into the database, verifying them first
 // It returns true in the first return value if the system is "in sync"
-func (hd *HeaderDownload) InsertHeaders(hf func(header *types.Header, hash common.Hash, blockHeight uint64) error, logPrefix string, logChannel <-chan time.Time) (bool, error) {
+func (hd *HeaderDownload) InsertHeaders(hf func(header *types.Header, hash common.Hash, blockHeight uint64, terminalTotalDifficulty *big.Int) error, terminalTotalDifficulty *big.Int, logPrefix string, logChannel <-chan time.Time) (bool, error) {
 	hd.lock.Lock()
 	defer hd.lock.Unlock()
 	var linksInFuture []*Link // Here we accumulate links that fail validation as "in the future"
@@ -635,7 +636,9 @@ func (hd *HeaderDownload) InsertHeaders(hf func(header *types.Header, hash commo
 			delete(hd.links, link.hash)
 			continue
 		}
-		if err := hf(link.header, link.hash, link.blockHeight); err != nil {
+
+		// Check if transition to proof-of-stake happened
+		if err := hf(link.header, link.hash, link.blockHeight, terminalTotalDifficulty); err != nil {
 			return false, err
 		}
 		if link.blockHeight > hd.highestInDb {
@@ -717,18 +720,18 @@ func (hd *HeaderDownload) addHeaderAsLink(header *types.Header, persisted bool) 
 	return link
 }
 
-func (hi *HeaderInserter) FeedHeaderFunc(db kv.StatelessRwTx) func(header *types.Header, hash common.Hash, blockHeight uint64) error {
-	return func(header *types.Header, hash common.Hash, blockHeight uint64) error {
-		return hi.FeedHeader(db, header, hash, blockHeight)
+func (hi *HeaderInserter) FeedHeaderFunc(db kv.StatelessRwTx) func(header *types.Header, hash common.Hash, blockHeight uint64, terminalTotalDifficulty *big.Int) error {
+	return func(header *types.Header, hash common.Hash, blockHeight uint64, terminalTotalDifficulty *big.Int) error {
+		return hi.FeedHeader(db, header, hash, blockHeight, terminalTotalDifficulty)
 	}
-
 }
 
-func (hi *HeaderInserter) FeedHeader(db kv.StatelessRwTx, header *types.Header, hash common.Hash, blockHeight uint64) error {
+func (hi *HeaderInserter) FeedHeader(db kv.StatelessRwTx, header *types.Header, hash common.Hash, blockHeight uint64, terminalTotalDifficulty *big.Int) error {
 	if hash == hi.prevHash {
 		// Skip duplicates
 		return nil
 	}
+
 	if oldH := rawdb.ReadHeader(db, hash, blockHeight); oldH != nil {
 		// Already inserted, skip
 		return nil
@@ -814,8 +817,15 @@ func (hi *HeaderInserter) FeedHeader(db kv.StatelessRwTx, header *types.Header, 
 	if err = rawdb.WriteTd(db, hash, blockHeight, td); err != nil {
 		return fmt.Errorf("[%s] failed to WriteTd: %w", hi.logPrefix, err)
 	}
+
 	if err = db.Put(kv.Headers, dbutils.HeaderKey(blockHeight, hash), data); err != nil {
 		return fmt.Errorf("[%s] failed to store header: %w", hi.logPrefix, err)
+	}
+
+	if terminalTotalDifficulty != nil && td.Cmp(terminalTotalDifficulty) >= 0 {
+		if err = rawdb.MarkTransition(db, blockHeight); err != nil {
+			return err
+		}
 	}
 	hi.prevHash = hash
 	return nil
@@ -850,7 +860,7 @@ func (hi *HeaderInserter) BestHeaderChanged() bool {
 // it allows higher-level algo immediately request more headers without waiting all stages precessing,
 // speeds up visibility of new blocks
 // It remember peerID - then later - if anchors created from segments will abandoned - this peerID gonna get Penalty
-func (hd *HeaderDownload) ProcessSegment(segment *ChainSegment, newBlock bool, peerID string) (requestMore bool, penalties []PenaltyItem) {
+func (hd *HeaderDownload) ProcessSegment(segment *ChainSegment, newBlock bool, peerID enode.ID) (requestMore bool, penalties []PenaltyItem) {
 	log.Trace("processSegment", "from", segment.Headers[0].Number.Uint64(), "to", segment.Headers[len(segment.Headers)-1].Number.Uint64())
 	hd.lock.Lock()
 	defer hd.lock.Unlock()
@@ -1000,8 +1010,10 @@ func (hd *HeaderDownload) AddMinedBlock(block *types.Block) error {
 		return err
 	}
 
+	peerID := enode.ID{'m', 'i', 'n', 'e', 'r'} // "miner"
+
 	for _, segment := range segments {
-		_, _ = hd.ProcessSegment(segment, false /* newBlock */, "miner")
+		_, _ = hd.ProcessSegment(segment, false /* newBlock */, peerID)
 	}
 	return nil
 }

@@ -31,6 +31,7 @@ import (
 	"text/template"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/txpool"
 	"github.com/ledgerwatch/erigon/eth/protocols/eth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -181,7 +182,7 @@ var (
 	TxPoolPriceBumpFlag = cli.Uint64Flag{
 		Name:  "txpool.pricebump",
 		Usage: "Price bump percentage to replace an already existing transaction",
-		Value: ethconfig.Defaults.TxPool.PriceBump,
+		Value: txpool.DefaultConfig.PriceBump,
 	}
 	TxPoolAccountSlotsFlag = cli.Uint64Flag{
 		Name:  "txpool.accountslots",
@@ -531,6 +532,11 @@ var (
 		Name:  "clique.datadir",
 		Usage: "a path to clique db folder",
 		Value: "",
+	}
+
+	SnapshotSyncFlag = cli.BoolFlag{
+		Name:  "experimental.snapshot",
+		Usage: "Enabling experimental snapshot sync",
 	}
 )
 
@@ -951,6 +957,9 @@ func setDataDirCobra(f *pflag.FlagSet, cfg *node.Config) {
 	} else {
 		cfg.DataDir = DataDirForNetwork(cfg.DataDir, chain)
 	}
+
+	cfg.DataDir = DataDirForNetwork(cfg.DataDir, chain)
+
 }
 
 func setGPO(ctx *cli.Context, cfg *gasprice.Config) {
@@ -979,7 +988,6 @@ func setGPOCobra(f *pflag.FlagSet, cfg *gasprice.Config) {
 }
 
 func setTxPool(ctx *cli.Context, cfg *core.TxPoolConfig) {
-	cfg.V2 = true
 	if ctx.GlobalIsSet(TxPoolDisableFlag.Name) {
 		cfg.Disable = true
 	}
@@ -1214,6 +1222,11 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, nodeConfig *node.Config, cfg *ethconfig.Config) {
+	if ctx.GlobalBool(SnapshotSyncFlag.Name) {
+		cfg.Snapshot.Enabled = true
+		cfg.Snapshot.Dir = path.Join(nodeConfig.DataDir, "snapshots")
+	}
+
 	CheckExclusive(ctx, MinerSigningKeyFileFlag, MinerEtherbaseFlag)
 	setEtherbase(ctx, cfg)
 	setGPO(ctx, &cfg.GPO)

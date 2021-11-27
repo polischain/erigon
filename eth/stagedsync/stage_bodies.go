@@ -10,9 +10,9 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/common"
-	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+	"github.com/ledgerwatch/erigon/p2p/enode"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/turbo/adapter"
 	"github.com/ledgerwatch/erigon/turbo/stages/bodydownload"
@@ -23,7 +23,7 @@ import (
 type BodiesCfg struct {
 	db              kv.RwDB
 	bd              *bodydownload.BodyDownload
-	bodyReqSend     func(context.Context, *bodydownload.BodyRequest) []byte
+	bodyReqSend     func(context.Context, *bodydownload.BodyRequest) (enode.ID, bool)
 	penalise        func(context.Context, []headerdownload.PenaltyItem)
 	blockPropagator adapter.BlockPropagator
 	timeout         int
@@ -34,7 +34,7 @@ type BodiesCfg struct {
 func StageBodiesCfg(
 	db kv.RwDB,
 	bd *bodydownload.BodyDownload,
-	bodyReqSend func(context.Context, *bodydownload.BodyRequest) []byte,
+	bodyReqSend func(context.Context, *bodydownload.BodyRequest) (enode.ID, bool),
 	penalise func(context.Context, []headerdownload.PenaltyItem),
 	blockPropagator adapter.BlockPropagator,
 	timeout int,
@@ -79,6 +79,7 @@ func BodiesForward(
 	if bodyProgress == headerProgress {
 		return nil
 	}
+
 	logPrefix := s.LogPrefix()
 	if headerProgress <= bodyProgress+16 {
 		// When processing small number of blocks, we can afford wasting more bandwidth but get blocks quicker
@@ -89,12 +90,21 @@ func BodiesForward(
 	}
 	logEvery := time.NewTicker(logInterval)
 	defer logEvery.Stop()
+
+	// Property of blockchain: same block in different forks will have different hashes.
+	// Means - can mark all canonical blocks as non-canonical on unwind, and
+	// do opposite here - without storing any meta-info.
+	if err := rawdb.MakeBodiesCanonical(tx, s.BlockNumber+1, ctx, logPrefix, logEvery); err != nil {
+		return fmt.Errorf("make block canonical: %w", err)
+	}
+
 	var prevDeliveredCount float64 = 0
 	var prevWastedCount float64 = 0
 	timer := time.NewTimer(1 * time.Second) // Check periodically even in the abseence of incoming messages
 	var blockNum uint64
 	var req *bodydownload.BodyRequest
-	var peer []byte
+	var peer enode.ID
+	var sentToPeer bool
 	stopped := false
 	prevProgress := bodyProgress
 	noProgressCount := 0 // How many time the progress was printed without actual progress
@@ -110,19 +120,20 @@ Loop:
 			}
 			d1 += time.Since(start)
 		}
-		peer = nil
+		peer = enode.ID{}
+		sentToPeer = false
 		if req != nil {
 			start := time.Now()
-			peer = cfg.bodyReqSend(ctx, req)
+			peer, sentToPeer = cfg.bodyReqSend(ctx, req)
 			d2 += time.Since(start)
 		}
-		if req != nil && peer != nil {
+		if req != nil && sentToPeer {
 			start := time.Now()
 			currentTime := uint64(time.Now().Unix())
 			cfg.bd.RequestSent(req, currentTime+uint64(timeout), peer)
 			d3 += time.Since(start)
 		}
-		for req != nil && peer != nil {
+		for req != nil && sentToPeer {
 			start := time.Now()
 			currentTime := uint64(time.Now().Unix())
 			req, blockNum, err = cfg.bd.RequestMoreBodies(tx, blockNum, currentTime, cfg.blockPropagator)
@@ -130,13 +141,14 @@ Loop:
 				return fmt.Errorf("request more bodies: %w", err)
 			}
 			d1 += time.Since(start)
-			peer = nil
+			peer = enode.ID{}
+			sentToPeer = false
 			if req != nil {
 				start = time.Now()
-				peer = cfg.bodyReqSend(ctx, req)
+				peer, sentToPeer = cfg.bodyReqSend(ctx, req)
 				d2 += time.Since(start)
 			}
-			if req != nil && peer != nil {
+			if req != nil && sentToPeer {
 				start = time.Now()
 				cfg.bd.RequestSent(req, currentTime+uint64(timeout), peer)
 				d3 += time.Since(start)
@@ -161,15 +173,10 @@ Loop:
 			}
 
 			// Check existence before write - because WriteRawBody isn't idempotent (it allocates new sequence range for transactions on every call)
-			exists, err := tx.Has(kv.BlockBody, dbutils.BlockBodyKey(blockHeight, header.Hash()))
-			if err != nil {
-				return err
+			if err = rawdb.WriteRawBodyIfNotExists(tx, header.Hash(), blockHeight, rawBody); err != nil {
+				return fmt.Errorf("writing block body: %w", err)
 			}
-			if !exists {
-				if err = rawdb.WriteRawBody(tx, header.Hash(), blockHeight, rawBody); err != nil {
-					return fmt.Errorf("writing block body: %w", err)
-				}
-			}
+
 			if blockHeight > bodyProgress {
 				bodyProgress = blockHeight
 				if err = s.Update(tx, blockHeight); err != nil {
@@ -251,6 +258,13 @@ func UnwindBodiesStage(u *UnwindState, tx kv.RwTx, cfg BodiesCfg, ctx context.Co
 			return err
 		}
 		defer tx.Rollback()
+	}
+
+	logEvery := time.NewTicker(logInterval)
+	defer logEvery.Stop()
+
+	if err := rawdb.MakeBodiesNonCanonical(tx, u.UnwindPoint+1, ctx, u.LogPrefix(), logEvery); err != nil {
+		return err
 	}
 
 	if err = u.Done(tx); err != nil {

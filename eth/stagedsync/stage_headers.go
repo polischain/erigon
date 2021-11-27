@@ -16,6 +16,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+	"github.com/ledgerwatch/erigon/p2p/enode"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/turbo/stages/headerdownload"
@@ -27,7 +28,7 @@ type HeadersCfg struct {
 	db                kv.RwDB
 	hd                *headerdownload.HeaderDownload
 	chainConfig       params.ChainConfig
-	headerReqSend     func(context.Context, *headerdownload.HeaderRequest) []byte
+	headerReqSend     func(context.Context, *headerdownload.HeaderRequest) (enode.ID, bool)
 	announceNewHashes func(context.Context, []headerdownload.Announce)
 	penalize          func(context.Context, []headerdownload.PenaltyItem)
 	batchSize         datasize.ByteSize
@@ -38,7 +39,7 @@ func StageHeadersCfg(
 	db kv.RwDB,
 	headerDownload *headerdownload.HeaderDownload,
 	chainConfig params.ChainConfig,
-	headerReqSend func(context.Context, *headerdownload.HeaderRequest) []byte,
+	headerReqSend func(context.Context, *headerdownload.HeaderRequest) (enode.ID, bool),
 	announceNewHashes func(context.Context, []headerdownload.Announce),
 	penalize func(context.Context, []headerdownload.PenaltyItem),
 	batchSize datasize.ByteSize,
@@ -117,27 +118,36 @@ func HeadersForward(
 	headerInserter := headerdownload.NewHeaderInserter(logPrefix, localTd, headerProgress)
 	cfg.hd.SetHeaderReader(&chainReader{config: &cfg.chainConfig, tx: tx})
 
-	var peer []byte
+	var sentToPeer bool
 	stopped := false
 	prevProgress := headerProgress
 Loop:
 	for !stopped {
+
+		isTrans, err := rawdb.Transitioned(tx, headerProgress)
+		if err != nil {
+			return err
+		}
+
+		if isTrans {
+			break
+		}
 		currentTime := uint64(time.Now().Unix())
 		req, penalties := cfg.hd.RequestMoreHeaders(currentTime)
 		if req != nil {
-			peer = cfg.headerReqSend(ctx, req)
-			if peer != nil {
+			_, sentToPeer = cfg.headerReqSend(ctx, req)
+			if sentToPeer {
 				cfg.hd.SentRequest(req, currentTime, 5 /* timeout */)
 				log.Trace("Sent request", "height", req.Number)
 			}
 		}
 		cfg.penalize(ctx, penalties)
 		maxRequests := 64 // Limit number of requests sent per round to let some headers to be inserted into the database
-		for req != nil && peer != nil && maxRequests > 0 {
+		for req != nil && sentToPeer && maxRequests > 0 {
 			req, penalties = cfg.hd.RequestMoreHeaders(currentTime)
 			if req != nil {
-				peer = cfg.headerReqSend(ctx, req)
-				if peer != nil {
+				_, sentToPeer = cfg.headerReqSend(ctx, req)
+				if sentToPeer {
 					cfg.hd.SentRequest(req, currentTime, 5 /*timeout */)
 					log.Trace("Sent request", "height", req.Number)
 				}
@@ -149,16 +159,18 @@ Loop:
 		// Send skeleton request if required
 		req = cfg.hd.RequestSkeleton()
 		if req != nil {
-			peer = cfg.headerReqSend(ctx, req)
-			if peer != nil {
+			_, sentToPeer = cfg.headerReqSend(ctx, req)
+			if sentToPeer {
 				log.Trace("Sent skeleton request", "height", req.Number)
 			}
 		}
 		// Load headers into the database
 		var inSync bool
-		if inSync, err = cfg.hd.InsertHeaders(headerInserter.FeedHeaderFunc(tx), logPrefix, logEvery.C); err != nil {
+
+		if inSync, err = cfg.hd.InsertHeaders(headerInserter.FeedHeaderFunc(tx), cfg.chainConfig.TerminalTotalDifficulty, logPrefix, logEvery.C); err != nil {
 			return err
 		}
+
 		announces := cfg.hd.GrabAnnounces()
 		if len(announces) > 0 {
 			cfg.announceNewHashes(ctx, announces)
@@ -210,6 +222,7 @@ Loop:
 	}
 	// We do not print the following line if the stage was interrupted
 	log.Info(fmt.Sprintf("[%s] Processed", logPrefix), "highest inserted", headerInserter.GetHighest(), "age", common.PrettyAge(time.Unix(int64(headerInserter.GetHighestTimestamp()), 0)))
+
 	return nil
 }
 
@@ -233,7 +246,7 @@ func fixCanonicalChain(logPrefix string, logEvery *time.Ticker, height uint64, h
 
 		select {
 		case <-logEvery.C:
-			log.Info("write canonical markers", "ancestor", ancestorHeight, "hash", ancestorHash)
+			log.Info(fmt.Sprintf("[%s] write canonical markers", logPrefix), "ancestor", ancestorHeight, "hash", ancestorHash)
 		default:
 		}
 		ancestorHash = ancestor.ParentHash
@@ -242,6 +255,7 @@ func fixCanonicalChain(logPrefix string, logEvery *time.Ticker, height uint64, h
 	if err != nil {
 		return fmt.Errorf("reading canonical hash for %d: %w", ancestorHeight, err)
 	}
+
 	return nil
 }
 
@@ -292,6 +306,17 @@ func HeadersUnwind(u *UnwindState, s *StageState, tx kv.RwTx, cfg HeadersCfg, te
 		var maxTd big.Int
 		var maxHash common.Hash
 		var maxNum uint64 = 0
+		// unwind the merge
+		isTrans, err := rawdb.Transitioned(tx, u.UnwindPoint)
+		if err != nil {
+			return err
+		}
+
+		if cfg.chainConfig.TerminalTotalDifficulty != nil && !isTrans {
+			if err := tx.Delete(kv.TransitionBlockKey, []byte(kv.TransitionBlockKey), nil); err != nil {
+				return err
+			}
+		}
 		if test { // If we are not in the test, we can do searching for the heaviest chain in the next cycle
 			// Find header with biggest TD
 			tdCursor, cErr := tx.Cursor(kv.HeaderTD)
@@ -340,6 +365,10 @@ func HeadersUnwind(u *UnwindState, s *StageState, tx kv.RwTx, cfg HeadersCfg, te
 			return err
 		}
 		if err = s.Update(tx, maxNum); err != nil {
+			return err
+		}
+		// When we forward sync, total difficulty is updated within headers processing
+		if err = stages.SaveStageProgress(tx, stages.TotalDifficulty, maxNum); err != nil {
 			return err
 		}
 	}
